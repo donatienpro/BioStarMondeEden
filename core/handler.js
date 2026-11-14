@@ -5,6 +5,8 @@
 import { EVENT_TYPES } from './schema.js';
 
 const PI_API = 'https://api.minepi.com/v2';
+// Échange du jeton d'accès Pi contre l'identité vérifiée (Pi App Studio). Aucune clé API n'est nécessaire.
+const APP_STUDIO_LOGIN = 'https://backend.appstudio-u7cm9zhmha0ruwv8.piappengine.com/pi/auth/v1/login';
 
 // Codes de lot : « BSME- » suivi de 8 caractères sans 0, O, 1, I ni L, pour être recopiés sans erreur.
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -85,7 +87,7 @@ const round = (n) => Math.round(n * 1e7) / 1e7;
 
 // store : { kind, getOrder(paymentId), insertOrder(order), completeOrder(paymentId, txid), cancelOrder(paymentId),
 //           listOrders({ username?, limit }) } — méthodes asynchrones ; listOrders renvoie les plus récentes d'abord.
-export function createApi({ catalogue, academy = { courses: {} }, store, piApiKey = '', sandbox = false, network = 'testnet', validationKey = '', adminUsernames = [], exposeErrors = false, fetchImpl, log = (...a) => console.error(...a) }) {
+export function createApi({ catalogue, academy = { courses: {} }, store, piApiKey = '', sandbox = false, network = 'testnet', validationKey = '', adminUsernames = [], exposeErrors = false, appStudioLoginUrl = APP_STUDIO_LOGIN, fetchImpl, log = (...a) => console.error(...a) }) {
   const doFetch = (...args) => (fetchImpl || globalThis.fetch)(...args);
   const products = validateCatalogue(catalogue);
   const getProduct = (id) => products.find((p) => p.id === id);
@@ -130,12 +132,31 @@ export function createApi({ catalogue, academy = { courses: {} }, store, piApiKe
     if (!response.ok) throw new HttpError(response.status, 'API Pi a répondu HTTP ' + response.status);
     return data;
   }
+  // Identité du compte Pi : le jeton d'accès est échangé avec Pi App Studio, qui le vérifie auprès de la plateforme Pi.
+  // Seuls l'uid et le nom d'utilisateur renvoyés par App Studio font foi ; ceux du navigateur sont ignorés.
+  // Un échange par connexion : le résultat est gardé en mémoire (empreinte du jeton, jamais le jeton lui-même).
+  const identityCache = new Map();
+  const IDENTITY_TTL_MS = 10 * 60 * 1000;
+  const IDENTITY_MAX = 2000;
+  async function tokenKey(accessToken) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(accessToken));
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
   async function piMe(accessToken) {
     if (typeof accessToken !== 'string' || accessToken.length < 10 || accessToken.length > 4096) throw new HttpError(400, 'Jeton Pi manquant ou invalide');
-    const response = await doFetch(PI_API + '/me', { headers: { Authorization: 'Bearer ' + accessToken } });
+    const key = await tokenKey(accessToken);
+    const hit = identityCache.get(key);
+    if (hit && hit.until > Date.now()) return hit.me;
+    identityCache.delete(key);
+    const response = await doFetch(appStudioLoginUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken }) });
     if (!response.ok) throw new HttpError(400, 'Vérification du compte Pi impossible (HTTP ' + response.status + ')');
-    const me = await response.json();
-    if (!me.uid || !me.username) throw new HttpError(400, 'Réponse du compte Pi incomplète');
+    let data;
+    try { data = await response.json(); } catch { data = null; }
+    const user = data && data.user;
+    if (!user || typeof user.uid !== 'string' || !user.uid || typeof user.username !== 'string' || !user.username) throw new HttpError(400, 'Réponse du compte Pi incomplète');
+    const me = { uid: user.uid, username: user.username };
+    if (identityCache.size >= IDENTITY_MAX) identityCache.delete(identityCache.keys().next().value);
+    identityCache.set(key, { me, until: Date.now() + IDENTITY_TTL_MS });
     return me;
   }
   const getPayment = (paymentId) => piApi('/payments/' + encodeURIComponent(paymentId));

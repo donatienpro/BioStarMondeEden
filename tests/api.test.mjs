@@ -12,13 +12,22 @@ const realFetch = globalThis.fetch;
 const payments = new Map();
 const users = { 'tok-alice-xxxxxxxx': { uid: 'u-alice', username: 'alice' }, 'tok-bob-xxxxxxxxxx': { uid: 'u-bob', username: 'bob' }, 'tok-zoubga-xxxxxxx': { uid: 'u-z', username: 'Zoubga' } };
 const PI = 'https://api.minepi.com/v2';
+const APP_STUDIO = 'https://backend.appstudio-u7cm9zhmha0ruwv8.piappengine.com/pi/auth/v1/login';
+let appStudioCalls = 0;
 
 function reply(status, body) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 globalThis.fetch = async (url, opts = {}) => {
   url = String(url);
+  if (url === APP_STUDIO) {
+    appStudioCalls++;
+    assert.equal(opts.method, 'POST');
+    const { accessToken } = JSON.parse(opts.body);
+    const u = users[accessToken];
+    return u ? reply(200, { sessionToken: 'session-' + u.uid, user: u }) : reply(401, { error: 'invalid' });
+  }
   if (!url.startsWith(PI)) return realFetch(url, opts);
   const auth = opts.headers?.Authorization || '';
-  if (url === PI + '/me') { const u = users[auth.replace('Bearer ', '')]; return u ? reply(200, u) : reply(401, { error: 'invalid' }); }
+  assert.notEqual(url, PI + '/me', 'le serveur ne doit jamais appeler /v2/me lui-même');
   assert.equal(auth, 'Key test-key', 'clé API serveur attendue');
   const m = url.match(/\/payments\/([^/]+)(?:\/(approve|complete))?$/);
   const p = payments.get(decodeURIComponent(m[1]));
@@ -49,6 +58,25 @@ const results = [];
 const check = (name, fn) => results.push([name, fn]);
 
 check('config publique', async () => { const r = await realFetch(base + '/api/config'); assert.deepEqual(await r.json(), { sandbox: false, network: 'mainnet' }); });
+check('fichier de validation Pi App Studio', async () => {
+  const r = await realFetch(base + '/pi-app-validation.txt');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /^text\/plain/);
+  assert.equal(await r.text(), 'piappstudio-fjXot_RnjOTLGEC0RYfwXmBeKY1JlOnS');
+});
+check('CSP : connect-src explicite avec socialchain.app, sans joker', async () => {
+  const csp = (await realFetch(base + '/')).headers.get('content-security-policy');
+  const connect = csp.match(/connect-src ([^;]+)/)[1];
+  assert.match(connect, /'self'/); assert.match(connect, /https:\/\/socialchain\.app/);
+  assert.ok(!/(^| )\*( |$)/.test(connect), 'pas de connect-src *'); assert.ok(!/default-src \*/.test(csp));
+});
+check('identité : seule la réponse d’App Studio fait foi, un échange par jeton', async () => {
+  const before = appStudioCalls;
+  const r1 = await post('/api/pi-auth', { accessToken: alice, uid: 'u-pirate', username: 'zoubga' });
+  assert.equal(r1.status, 200); assert.equal(r1.body.uid, 'u-alice'); assert.equal(r1.body.username, 'alice'); assert.equal(r1.body.isAdmin, false);
+  await post('/api/my-orders', { accessToken: alice }); await post('/api/my-orders', { accessToken: alice, username: 'bob' });
+  assert.equal(appStudioCalls - before, 1, 'un seul échange pour trois requêtes avec le même jeton');
+});
 check('CSP autorise le cadre Pi', async () => { const r = await realFetch(base + '/'); const csp = r.headers.get('content-security-policy'); assert.match(csp, /frame-ancestors 'self' https:\/\/\*\.minepi\.com https:\/\/\*\.pinet\.com$/); assert.equal(r.headers.get('x-frame-options'), null); });
 check('flux normal approve → complete', async () => {
   newPayment('p1', 'u-alice', 1, 'fondamentaux-agrobio');

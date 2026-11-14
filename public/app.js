@@ -141,7 +141,7 @@ function showSpaces() {
   refreshSpaces();
 }
 
-// Le SDK est initialisé une seule fois, au chargement, avec le réglage Sandbox fourni par le serveur.
+// Le SDK est initialisé une seule fois, au chargement (le mode Sandbox est détecté automatiquement).
 async function initPi() {
   try { piConfig = await api('/api/config'); } catch { /* réglages par défaut : Testnet, Sandbox */ }
   // Étiquette du catalogue : réseau réel (Testnet ou Mainnet) fourni par le serveur.
@@ -149,7 +149,8 @@ async function initPi() {
   if (pill) pill.textContent = 'Propositions à valider · ' + networkLabel();
   if (!window.Pi) { status('Ouvrez l’application depuis Pi Browser.'); return; }
   try {
-    window.Pi.init({ version: '2.0', sandbox: Boolean(piConfig.sandbox) });
+    // Le mode Sandbox est détecté automatiquement par le SDK : aucun réglage « sandbox » n'est transmis.
+    await window.Pi.init({ version: '2.0' });
     piReady = true;
     status(networkLabel() + ' — connectez-vous avec Pi.');
   } catch (e) {

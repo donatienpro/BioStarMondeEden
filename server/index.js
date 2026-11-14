@@ -127,7 +127,7 @@ const api = createApi({
 
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 const securityHeaders = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' };
-const csp = "default-src 'self'; script-src 'self' https://sdk.minepi.com https://*.minepi.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.minepi.com https://*.minepi.com; frame-src https://*.minepi.com; base-uri 'self'; form-action 'self'; frame-ancestors " + frameAncestors;
+const csp = "default-src 'self'; script-src 'self' https://sdk.minepi.com https://*.minepi.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://socialchain.app https://*.minepi.com; frame-src https://*.minepi.com; base-uri 'self'; form-action 'self'; frame-ancestors " + frameAncestors;
 
 function readRaw(req, limit = 32_000) {
   return new Promise((resolve, reject) => {
