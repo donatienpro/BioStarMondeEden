@@ -1,0 +1,36 @@
+# Blueprint Render : un service web Node pour Bio Star Monde Éden.
+# Les valeurs secrètes (sync: false) sont saisies dans le tableau de bord Render, jamais dans le dépôt.
+services:
+  - type: web
+    name: bio-star-monde-eden
+    runtime: node
+    region: frankfurt
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: PI_NETWORK
+        value: testnet
+      - key: PI_SANDBOX
+        value: "false"
+      - key: SUPABASE_URL
+        value: https://xjdwbhupwlrwbpacsnki.supabase.co
+      - key: SUPABASE_TABLE_PREFIX
+        value: bsme_
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: PI_API_KEY
+        sync: false
+      - key: PI_VALIDATION_KEY
+        sync: false
+      - key: ADMIN_USERNAMES
+        sync: false
+      - key: APP_URL
+        sync: false
