@@ -141,19 +141,32 @@ function showSpaces() {
   refreshSpaces();
 }
 
+// Diagnostic : signale au serveur l'étape de connexion Pi et ce que Pi répond (aucun jeton, aucun secret).
+const diagStart = Date.now();
+function diag(stage, msg) {
+  try {
+    let ref = ''; try { ref = new URL(document.referrer).origin; } catch { ref = document.referrer ? 'inconnu' : ''; }
+    const payload = { stage, msg: msg || '', pi: window.Pi ? 'oui' : 'non', frame: window.top !== window ? 'cadre' : 'haut', ref, ms: Date.now() - diagStart, ua: navigator.userAgent };
+    fetch((window.BSME_API_BASE || '') + '/api/diag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true }).catch(() => {});
+  } catch { /* le diagnostic ne doit jamais gêner l'application */ }
+}
+
 // Le SDK est initialisé une seule fois, au chargement (le mode Sandbox est détecté automatiquement).
 async function initPi() {
   try { piConfig = await api('/api/config'); } catch { /* réglages par défaut : Testnet, Sandbox */ }
   // Étiquette du catalogue : réseau réel (Testnet ou Mainnet) fourni par le serveur.
   const pill = document.getElementById('catalogue-pill');
   if (pill) pill.textContent = 'Propositions à valider · ' + networkLabel();
-  if (!window.Pi) { status('Ouvrez l’application depuis Pi Browser.'); return; }
+  diag('chargement');
+  if (!window.Pi) { diag('sdk-absent'); status('Ouvrez l’application depuis Pi Browser.'); return; }
   try {
     // Le mode Sandbox est détecté automatiquement par le SDK : aucun réglage « sandbox » n'est transmis.
     await window.Pi.init({ version: '2.0' });
     piReady = true;
+    diag('init-ok');
     status(networkLabel() + ' — connectez-vous avec Pi.');
   } catch (e) {
+    diag('init-erreur', e && e.message);
     status('SDK Pi non initialisé : ' + e.message);
   }
 }
@@ -175,7 +188,7 @@ async function processIncomplete() {
 
 // Pi.authenticate ne répond jamais hors du Pi Browser (Chrome, Firefox…) ni sur une adresse non enregistrée
 // dans le Developer Portal : au-delà de ce délai, un message clair remplace l'attente silencieuse.
-const PI_AUTH_TIMEOUT_MS = Number(window.BSME_PI_AUTH_TIMEOUT_MS) || 25000;
+const PI_AUTH_TIMEOUT_MS = Number(window.BSME_PI_AUTH_TIMEOUT_MS) || 60000;
 function withTimeout(promise, ms, message) {
   let timer;
   const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
@@ -194,10 +207,12 @@ async function connectPi() {
   if (button.disabled) return;
   button.disabled = true;
   status('Connexion à Pi en cours… Acceptez la demande de Pi Browser.');
+  diag('auth-debut');
   try {
     const auth = await withTimeout(window.Pi.authenticate(['username', 'payments'], (payment) => {
       if (payment && payment.identifier) { pendingIncomplete = payment; processIncomplete(); }
     }), PI_AUTH_TIMEOUT_MS, 'Pi ne répond pas. La connexion Pi fonctionne uniquement dans le Pi Browser : si vous êtes dans Chrome ou un autre navigateur, ouvrez l’application depuis le Pi Browser.');
+    diag('auth-ok');
     piUser = auth.user;
     piAccessToken = auth.accessToken;
     const verified = await api('/api/pi-auth', { accessToken: piAccessToken });
@@ -211,6 +226,7 @@ async function connectPi() {
     await processIncomplete();
     showSpaces();
   } catch (e) {
+    diag('auth-erreur', e && e.message);
     toast('Connexion Pi impossible : ' + e.message);
     status('Connexion Pi non établie : ' + e.message);
   } finally {

@@ -331,6 +331,13 @@ export function createApi({ catalogue, academy = { courses: {} }, store, piApiKe
 
   const routes = {
     'GET /api/config': async () => json(200, { sandbox, network }),
+    // Diagnostic de la connexion Pi : l'application signale à quelle étape Pi répond ou se tait. Aucun jeton ni secret.
+    'POST /api/diag': async (request) => {
+      const body = await readBody(request);
+      const clip = (v, n) => String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, n);
+      log('diag: ' + ['stage', 'pi', 'frame', 'ref', 'ms', 'msg', 'ua'].map((k) => k + '=' + clip(body[k], k === 'ua' ? 160 : 200)).join(' | '));
+      return json(200, { ok: true });
+    },
     'GET /api/products': async () => json(200, { products }),
     'GET /api/me': async () => json(200, { authenticated: false, message: 'Connectez-vous avec Pi Browser.' }),
 
