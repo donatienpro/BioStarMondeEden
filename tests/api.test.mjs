@@ -77,7 +77,7 @@ check('identité : seule la réponse d’App Studio fait foi, un échange par je
   await post('/api/my-orders', { accessToken: alice }); await post('/api/my-orders', { accessToken: alice, username: 'bob' });
   assert.equal(appStudioCalls - before, 1, 'un seul échange pour trois requêtes avec le même jeton');
 });
-check('CSP autorise le cadre Pi', async () => { const r = await realFetch(base + '/'); const csp = r.headers.get('content-security-policy'); assert.match(csp, /frame-ancestors 'self' https:\/\/\*\.minepi\.com https:\/\/\*\.pinet\.com$/); assert.equal(r.headers.get('x-frame-options'), null); });
+check('CSP autorise le cadre Pi', async () => { const r = await realFetch(base + '/'); const csp = r.headers.get('content-security-policy'); const fa = csp.match(/frame-ancestors ([^;]+)$/)[1].split(' '); for (const o of ["'self'", 'https://minepi.com', 'https://*.minepi.com', 'https://pinet.com', 'https://*.pinet.com', 'https://*.piappengine.com']) assert.ok(fa.includes(o), 'frame-ancestors doit contenir ' + o); assert.ok(!fa.includes('*') && !fa.includes('https:'), 'aucun joker global'); assert.equal(r.headers.get('x-frame-options'), null); });
 check('flux normal approve → complete', async () => {
   newPayment('p1', 'u-alice', 1, 'fondamentaux-agrobio');
   let r = await post('/api/payments/approve', { paymentId: 'p1', productId: 'fondamentaux-agrobio', accessToken: alice });

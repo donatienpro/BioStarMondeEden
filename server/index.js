@@ -31,7 +31,8 @@ const appUrl = env.APP_URL || 'http://localhost:3000';
 const piSandbox = env.PI_SANDBOX === 'true';
 const piNetwork = env.PI_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
 // Le Sandbox et le Pi Browser affichent l'application dans un cadre : 'none' la bloquerait.
-const frameAncestors = env.FRAME_ANCESTORS || "'self' https://*.minepi.com https://*.pinet.com";
+// Domaines Pi autorisés à afficher l'application dans un cadre (PiNet, aperçu de Pi App Studio, Pi Browser). Liste explicite, sans joker global.
+const frameAncestors = env.FRAME_ANCESTORS || "'self' https://minepi.com https://*.minepi.com https://pinet.com https://*.pinet.com https://*.piappengine.com";
 
 // Stockage local (développement) : SQLite.
 async function createSqliteStore() {
@@ -150,6 +151,8 @@ async function sendResponse(res, response) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, appUrl);
+    // Diagnostic : qui affiche l'application dans un cadre (origine de la page parente), pour régler frame-ancestors.
+    if (req.headers['sec-fetch-dest'] === 'iframe') console.log(new Date().toISOString(), 'cadre', req.method, url.pathname, 'parent=' + (req.headers.referer || '-'));
     const init = { method: req.method, headers: Object.entries(req.headers).filter(([, v]) => typeof v === 'string') };
     if (req.method !== 'GET' && req.method !== 'HEAD') init.body = await readRaw(req);
     const response = await api(new Request(url, init));
