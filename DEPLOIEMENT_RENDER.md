@@ -26,7 +26,7 @@ Ouvrir `https://<adresse>/api/health` : `piApiKeyConfigured` doit valoir `true`,
 ## 4. Brancher sur Pi (Developer Portal)
 1. Application **Testnet** : champ Production URL = l'adresse exacte du service, **sans point, sans espace, sans `/` final**.
 2. Copier la clé « Verify domain » dans `PI_VALIDATION_KEY` (Render), attendre le redéploiement, puis ouvrir `/validation-key.txt` : il doit afficher la clé. Appuyer ensuite sur **Verify**.
-3. Pi App Studio demande aussi le fichier `/pi-app-validation.txt` (déjà présent dans `public/`) : il doit contenir uniquement le jeton affiché par App Studio. La connexion est vérifiée côté serveur par un échange du jeton d'accès avec App Studio ; le serveur n'appelle jamais `/v2/me`.
+3. Pi App Studio demande aussi le fichier `/pi-app-validation.txt` (déjà présent dans `public/`) : il doit contenir uniquement le jeton affiché par App Studio. La connexion est vérifiée côté serveur par `GET https://api.minepi.com/v2/me` (sans clé API) ; en secours, par un échange du jeton d'accès avec App Studio.
 4. Une adresse par application Pi : ne pas réutiliser la même adresse pour le Testnet et le Mainnet.
 
 ## 5. Tester dans le Pi Browser

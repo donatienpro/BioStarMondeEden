@@ -11,6 +11,8 @@ const testDbDir = process.env.TEST_DB_DIR || fs.mkdtempSync(path.join(os.tmpdir(
 const realFetch = globalThis.fetch;
 const payments = new Map();
 const users = { 'tok-alice-xxxxxxxx': { uid: 'u-alice', username: 'alice' }, 'tok-bob-xxxxxxxxxx': { uid: 'u-bob', username: 'bob' }, 'tok-zoubga-xxxxxxx': { uid: 'u-z', username: 'Zoubga' } };
+const studioOnly = { 'tok-studio-xxxxxxx': { uid: 'u-studio', username: 'studio' } };
+let meCalls = 0;
 const PI = 'https://api.minepi.com/v2';
 const APP_STUDIO = 'https://backend.appstudio-u7cm9zhmha0ruwv8.piappengine.com/pi/auth/v1/login';
 let appStudioCalls = 0;
@@ -22,12 +24,17 @@ globalThis.fetch = async (url, opts = {}) => {
     appStudioCalls++;
     assert.equal(opts.method, 'POST');
     const { accessToken } = JSON.parse(opts.body);
-    const u = users[accessToken];
+    const u = users[accessToken] || studioOnly[accessToken];
     return u ? reply(200, { sessionToken: 'session-' + u.uid, user: u }) : reply(401, { error: 'invalid' });
   }
   if (!url.startsWith(PI)) return realFetch(url, opts);
   const auth = opts.headers?.Authorization || '';
-  assert.notEqual(url, PI + '/me', 'le serveur ne doit jamais appeler /v2/me lui-même');
+  if (url === PI + '/me') {
+    meCalls++;
+    assert.equal(opts.method || 'GET', 'GET');
+    const u = users[(opts.headers?.Authorization || '').replace('Bearer ', '')];
+    return u ? reply(200, u) : reply(401, { error: 'invalid' });
+  }
   assert.equal(auth, 'Key test-key', 'clé API serveur attendue');
   const m = url.match(/\/payments\/([^/]+)(?:\/(approve|complete))?$/);
   const p = payments.get(decodeURIComponent(m[1]));
@@ -70,12 +77,16 @@ check('CSP : connect-src explicite avec socialchain.app, sans joker', async () =
   assert.match(connect, /'self'/); assert.match(connect, /https:\/\/socialchain\.app/);
   assert.ok(!/(^| )\*( |$)/.test(connect), 'pas de connect-src *'); assert.ok(!/default-src \*/.test(csp));
 });
-check('identité : seule la réponse d’App Studio fait foi, un échange par jeton', async () => {
-  const before = appStudioCalls;
+check('identité : /v2/me fait foi, un contrôle par jeton, secours App Studio', async () => {
+  const m0 = meCalls, s0 = appStudioCalls;
   const r1 = await post('/api/pi-auth', { accessToken: alice, uid: 'u-pirate', username: 'zoubga' });
   assert.equal(r1.status, 200); assert.equal(r1.body.uid, 'u-alice'); assert.equal(r1.body.username, 'alice'); assert.equal(r1.body.isAdmin, false);
   await post('/api/my-orders', { accessToken: alice }); await post('/api/my-orders', { accessToken: alice, username: 'bob' });
-  assert.equal(appStudioCalls - before, 1, 'un seul échange pour trois requêtes avec le même jeton');
+  assert.equal(meCalls - m0, 1, 'un seul contrôle /v2/me pour trois requêtes'); assert.equal(appStudioCalls - s0, 0, 'App Studio non sollicité');
+  const r2 = await post('/api/pi-auth', { accessToken: 'tok-studio-xxxxxxx' });
+  assert.equal(r2.status, 200); assert.equal(r2.body.username, 'studio'); assert.equal(appStudioCalls - s0, 1, 'secours App Studio');
+  const r3 = await post('/api/pi-auth', { accessToken: 'tok-inconnu-xxxxxxx' });
+  assert.equal(r3.status, 400);
 });
 check('CSP autorise le cadre Pi', async () => { const r = await realFetch(base + '/'); const csp = r.headers.get('content-security-policy'); const fa = csp.match(/frame-ancestors ([^;]+)$/)[1].split(' '); for (const o of ["'self'", 'https://minepi.com', 'https://*.minepi.com', 'https://pinet.com', 'https://*.pinet.com', 'https://*.piappengine.com']) assert.ok(fa.includes(o), 'frame-ancestors doit contenir ' + o); assert.ok(!fa.includes('*') && !fa.includes('https:'), 'aucun joker global'); assert.equal(r.headers.get('x-frame-options'), null); });
 check('flux normal approve → complete', async () => {

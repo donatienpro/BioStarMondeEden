@@ -132,9 +132,10 @@ export function createApi({ catalogue, academy = { courses: {} }, store, piApiKe
     if (!response.ok) throw new HttpError(response.status, 'API Pi a répondu HTTP ' + response.status);
     return data;
   }
-  // Identité du compte Pi : le jeton d'accès est échangé avec Pi App Studio, qui le vérifie auprès de la plateforme Pi.
-  // Seuls l'uid et le nom d'utilisateur renvoyés par App Studio font foi ; ceux du navigateur sont ignorés.
-  // Un échange par connexion : le résultat est gardé en mémoire (empreinte du jeton, jamais le jeton lui-même).
+  // Identité du compte Pi : le jeton d'accès est vérifié par la plateforme Pi (GET /v2/me, sans clé API), comme dans DIFPROGLOBAL ;
+  // en secours, par l'échange avec Pi App Studio (ouverture depuis l'adresse App Studio).
+  // Seuls l'uid et le nom d'utilisateur renvoyés par Pi font foi ; ceux du navigateur sont ignorés.
+  // Une vérification par connexion : le résultat est gardé en mémoire (empreinte du jeton, jamais le jeton lui-même).
   const identityCache = new Map();
   const IDENTITY_TTL_MS = 10 * 60 * 1000;
   const IDENTITY_MAX = 2000;
@@ -148,12 +149,21 @@ export function createApi({ catalogue, academy = { courses: {} }, store, piApiKe
     const hit = identityCache.get(key);
     if (hit && hit.until > Date.now()) return hit.me;
     identityCache.delete(key);
-    const response = await doFetch(appStudioLoginUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken }) });
-    if (!response.ok) throw new HttpError(400, 'Vérification du compte Pi impossible (HTTP ' + response.status + ')');
-    let data;
-    try { data = await response.json(); } catch { data = null; }
-    const user = data && data.user;
-    if (!user || typeof user.uid !== 'string' || !user.uid || typeof user.username !== 'string' || !user.username) throw new HttpError(400, 'Réponse du compte Pi incomplète');
+    const valid = (u) => u && typeof u.uid === 'string' && u.uid && typeof u.username === 'string' && u.username;
+    let user = null; let status = 0;
+    try {
+      const r = await doFetch(PI_API + '/me', { headers: { Authorization: 'Bearer ' + accessToken } });
+      status = r.status;
+      if (r.ok) { const d = await r.json().catch(() => null); if (valid(d)) user = d; }
+    } catch { status = 0; }
+    if (!user) {
+      try {
+        const r = await doFetch(appStudioLoginUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken }) });
+        if (r.ok) { const d = await r.json().catch(() => null); if (d && valid(d.user)) user = d.user; }
+        else if (!status) status = r.status;
+      } catch { /* secours indisponible */ }
+    }
+    if (!user) { log('auth: vérification Pi impossible, /v2/me HTTP ' + status); throw new HttpError(400, 'Vérification du compte Pi impossible' + (status ? ' (HTTP ' + status + ')' : '')); }
     const me = { uid: user.uid, username: user.username };
     if (identityCache.size >= IDENTITY_MAX) identityCache.delete(identityCache.keys().next().value);
     identityCache.set(key, { me, until: Date.now() + IDENTITY_TTL_MS });
