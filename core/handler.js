@@ -129,7 +129,11 @@ export function createApi({ catalogue, academy = { courses: {} }, store, piApiKe
     const text = await response.text();
     let data;
     try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
-    if (!response.ok) throw new HttpError(response.status, 'API Pi a répondu HTTP ' + response.status);
+    if (!response.ok) {
+      // Diagnostic sans secret : méthode, chemin, statut et code d'erreur renvoyés par Pi (ex. payment_not_found).
+      log('payments: API Pi ' + (options.method || 'GET') + ' ' + endpoint + ' ' + response.status + ' ' + String(data.error || data.error_message || '').slice(0, 80));
+      throw new HttpError(response.status, 'API Pi a répondu HTTP ' + response.status);
+    }
     return data;
   }
   // Identité du compte Pi : le jeton d'accès est vérifié par la plateforme Pi (GET /v2/me, sans clé API), comme dans DIFPROGLOBAL ;
