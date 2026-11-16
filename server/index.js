@@ -183,5 +183,17 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('Réseau Pi :', piNetwork, '— Mode Sandbox :', piSandbox);
   if (!fs.existsSync(path.join(ROOT, '.env'))) console.warn('ATTENTION : fichier .env absent. Copiez .env.example en .env.');
 });
+// Maintien en éveil (offre gratuite de Render, mise en veille après 15 minutes sans visite) :
+// le service visite sa propre adresse publique toutes les 10 minutes, ce qui compte comme une visite pour Render.
+// Actif seulement en production, avec RENDER_EXTERNAL_URL (fournie par Render) ou KEEP_ALIVE_URL ; KEEP_ALIVE=false le coupe.
+const keepAliveUrl = (env.KEEP_ALIVE_URL || env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
+if (isProd && keepAliveUrl && env.KEEP_ALIVE !== 'false') {
+  const KEEP_ALIVE_MS = 10 * 60 * 1000;
+  const ping = () => fetch(keepAliveUrl + '/healthz?db=1', { signal: AbortSignal.timeout(20_000) })
+    .then((r) => { if (!r.ok) console.warn(new Date().toISOString(), 'maintien en éveil : HTTP', r.status); })
+    .catch((e) => console.warn(new Date().toISOString(), 'maintien en éveil impossible :', e.message));
+  setInterval(ping, KEEP_ALIVE_MS).unref();
+  console.log('Maintien en éveil actif :', keepAliveUrl, 'toutes les 10 minutes');
+}
 process.on('SIGINT', () => { server.close(() => { if (db) db.close(); process.exit(0); }); });
 process.on('SIGTERM', () => { server.close(() => { if (db) db.close(); process.exit(0); }); });
