@@ -753,7 +753,11 @@ export function createApi({ catalogue, academy = { courses: {} }, store, piApiKe
     // On retire un éventuel préfixe /functions/v1 (hébergements qui le transmettent).
     const pathname = url.pathname.replace(/^\/functions\/v1(?=\/)/, '');
     try {
-      if (request.method === 'GET' && (pathname === '/healthz' || pathname === '/api/health')) {
+      if ((request.method === 'GET' || request.method === 'HEAD') && (pathname === '/healthz' || pathname === '/api/health')) {
+        // ?db=1 : lecture légère de la base. Une sonde externe (toutes les 5 à 10 minutes) garde ainsi réveillés Render et Supabase gratuits.
+        if (url.searchParams.get('db') === '1') {
+          try { await store.count('orders'); } catch (e) { log('health: base injoignable : ' + e.message); return json(503, { ok: false, database: store.kind, databaseReachable: false }); }
+        }
         return json(200, { ok: true, app: 'Bio Star Monde Éden', network, environment: sandbox ? 'sandbox-configured' : 'non-sandbox', piApiKeyConfigured: Boolean(piApiKey), adminConfigured: admins.size > 0, database: store.kind });
       }
       if (request.method === 'GET' && pathname === '/validation-key.txt') {

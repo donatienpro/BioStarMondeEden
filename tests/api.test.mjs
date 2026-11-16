@@ -89,6 +89,10 @@ check('identité : /v2/me fait foi, un contrôle par jeton, secours App Studio',
   assert.equal(r3.status, 400);
 });
 check('CSP autorise le cadre Pi', async () => { const r = await realFetch(base + '/'); const csp = r.headers.get('content-security-policy'); const fa = csp.match(/frame-ancestors ([^;]+)$/)[1].split(' '); for (const o of ["'self'", 'https://minepi.com', 'https://*.minepi.com', 'https://pinet.com', 'https://*.pinet.com', 'https://*.piappengine.com']) assert.ok(fa.includes(o), 'frame-ancestors doit contenir ' + o); assert.ok(!fa.includes('*') && !fa.includes('https:'), 'aucun joker global'); assert.equal(r.headers.get('x-frame-options'), null); });
+check('sonde de santé : GET, HEAD et lecture de la base', async () => {
+  const g = await realFetch(base + '/healthz?db=1'); assert.equal(g.status, 200); assert.equal((await g.json()).ok, true);
+  const h = await realFetch(base + '/healthz', { method: 'HEAD' }); assert.equal(h.status, 200);
+});
 check('diagnostic de connexion : accepté, sans secret', async () => {
   const r = await post('/api/diag', { stage: 'auth-erreur', msg: 'Authentication failed.', pi: 'oui', frame: 'cadre', ref: 'https://app-cdn.minepi.com', ms: 1234, ua: 'Test' });
   assert.equal(r.status, 200); assert.equal(r.body.ok, true);
